@@ -267,6 +267,36 @@ python verify_gates.py -s 08 -g sample_kitti/sequences/08/GROUND_TRUTH_T_rel.txt
 6. **Gate B1 (Relative Motion T_rel)**: Compares computed `T_rel` transformations against ground truth. Fails with an error if the ground-truth file is missing or contains no valid transitions.
 7. **Gate REMAP (4-Class Taxonomy)**: Verifies the 260-element and 20-element lookup tables against reference classes.
 
+## 🖼️ Render the 2.5D Foveated Grid
+
+After map replay has produced snapshots, render the latest sequence-08 map with:
+
+```bash
+python visualize_2_5d.py
+```
+
+The renderer reads only:
+
+```text
+SalsaNext-Fork/predictions/valid/maps/sequences/08/*.npz
+```
+
+and writes the PNG to:
+
+```text
+SalsaNext-Fork/predictions/valid/maps/visualizations/08/
+```
+
+To render a particular frame:
+
+```bash
+python visualize_2_5d.py --frame 000009
+```
+
+The four panels show the current semantic grid, elevation, traversability,
+and foveated resolution rings. Dynamic cells are outlined on the ring view.
+Visualization is intentionally separate from the headless timed pipeline.
+
 ---
 
 ## ❓ Common Questions & Troubleshooting

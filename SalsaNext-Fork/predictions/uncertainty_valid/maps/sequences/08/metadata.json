@@ -1,0 +1,6 @@
+{
+  "sequence": "08",
+  "frames": 271,
+  "confidence_source": "SalsaNext ADF predictive variance mapped as 1/(1+variance)",
+  "pipeline": "scan -> prediction -> grid -> rating -> rebin -> dynamics -> log_odds_fusion"
+}

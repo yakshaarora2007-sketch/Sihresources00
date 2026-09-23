@@ -17,6 +17,21 @@ if TRAIN_ROOT not in sys.path:
     sys.path.insert(0, TRAIN_ROOT)
 
 from tasks.semantic.modules.user import *
+
+
+def run_map_pipeline(dataset, prediction_log, output_log, sequence, max_frames):
+    repo_root = Path(__file__).resolve().parents[4]
+    src_root = repo_root / "src"
+    if str(src_root) not in sys.path:
+        sys.path.insert(0, str(src_root))
+    from fovmap.replay_pipeline import replay_prediction_sequence
+    return replay_prediction_sequence(
+        dataset_root=dataset,
+        prediction_root=prediction_log,
+        output_root=output_log,
+        sequence=sequence,
+        max_frames=max_frames,
+    )
 def str2bool(v):
     if isinstance(v, bool):
        return v
@@ -62,6 +77,29 @@ if __name__ == '__main__':
         '--monte-carlo', '-c',
         type=int, default=30,
         help='Number of samplings per scan'
+    )
+    parser.add_argument(
+        '--pipeline',
+        action='store_true',
+        help='After inference, run grid/rating/rebin/dynamics/log-odds fusion.',
+    )
+    parser.add_argument(
+        '--pipeline-output',
+        type=str,
+        default=None,
+        help='Directory for per-frame fused map snapshots (defaults to <log>/maps).',
+    )
+    parser.add_argument(
+        '--pipeline-sequence',
+        type=str,
+        default='08',
+        help='Sequence to replay through the map pipeline.',
+    )
+    parser.add_argument(
+        '--pipeline-max-frames',
+        type=int,
+        default=None,
+        help='Optional limit for map replay frames.',
     )
 
 
@@ -118,6 +156,8 @@ if __name__ == '__main__':
             print("train", seq)
             os.makedirs(os.path.join(FLAGS.log, "sequences", seq))
             os.makedirs(os.path.join(FLAGS.log, "sequences", seq, "predictions"))
+            if FLAGS.uncertainty:
+                os.makedirs(os.path.join(FLAGS.log, "sequences", seq, "uncertainty"))
         for seq in DATA["split"]["valid"]:
             seq = '{0:02d}'.format(int(seq))
             print("valid", seq)
@@ -148,3 +188,15 @@ if __name__ == '__main__':
     # create user and infer dataset
     user = User(ARCH, DATA, FLAGS.dataset, FLAGS.log, FLAGS.model,FLAGS.split,FLAGS.uncertainty,FLAGS.monte_carlo)
     user.infer()
+    if FLAGS.pipeline:
+        if FLAGS.split not in (None, 'valid', 'test', 'train'):
+            parser.error("--pipeline requires a valid --split")
+        output_log = FLAGS.pipeline_output or os.path.join(FLAGS.log, "maps")
+        metadata = run_map_pipeline(
+            FLAGS.dataset,
+            FLAGS.log,
+            output_log,
+            FLAGS.pipeline_sequence,
+            FLAGS.pipeline_max_frames,
+        )
+        print("Map pipeline complete:", metadata)

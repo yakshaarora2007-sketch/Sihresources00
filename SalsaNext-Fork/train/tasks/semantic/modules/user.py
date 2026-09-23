@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 from tasks.semantic.modules.SalsaNext import *
 from tasks.semantic.modules.SalsaNextAdf import *
+import tasks.semantic.modules.adf as adf
 from tasks.semantic.postproc.KNN import KNN
 
 
@@ -80,7 +81,10 @@ class User():
                                       sensor=self.ARCH["dataset"]["sensor"],
                                       max_points=self.ARCH["dataset"]["max_points"],
                                       batch_size=1,
-                                      workers=self.ARCH["train"]["workers"],
+                                      # Inference uses batch size one. Keeping data loading in
+                                      # the main process avoids Windows shared-memory exhaustion
+                                      # when workers collate the large projection tensors.
+                                      workers=0,
                                       # Inference only needs scans. Keeping this
                                       # false also supports unlabeled test scans.
                                       gt=False,
@@ -178,15 +182,14 @@ class User():
 
         #compute output
         if self.uncertainty:
-            proj_output_r,log_var_r = self.model(proj_in)
-            for i in range(self.mc):
-                log_var, proj_output = self.model(proj_in)
-                log_var_r = torch.cat((log_var, log_var_r))
-                proj_output_r = torch.cat((proj_output, proj_output_r))
-
-            proj_output2,log_var2 = self.model(proj_in)
-            proj_output = proj_output_r.var(dim=0, keepdim=True).mean(dim=1)
-            log_var2 = log_var_r.mean(dim=0, keepdim=True).mean(dim=1)
+            raw_mean, raw_variance = self.model(proj_in)
+            proj_output, output_variance = adf.Softmax(
+                dim=1,
+                keep_variance_fn=lambda value: value + 1e-6,
+            )(raw_mean, raw_variance)
+            proj_argmax = self.median_filter_label_image(
+                proj_output.argmax(dim=1)[0]
+            )
             if self.post:
                 # knn postproc
                 unproj_argmax = self.post(proj_range,
@@ -213,19 +216,11 @@ class User():
             pred_np = unproj_argmax.cpu().numpy()
             pred_np = pred_np.reshape((-1)).astype(np.int32)
 
-            # log_var2 = log_var2[0][p_y, p_x]
-            # log_var2 = log_var2.cpu().numpy()
-            # log_var2 = log_var2.reshape((-1)).astype(np.float32)
-
-            log_var2 = log_var2[0][p_y, p_x]
-            log_var2 = log_var2.cpu().numpy()
-            log_var2 = log_var2.reshape((-1)).astype(np.float32)
+            pred_np = self.map_to_4_classes(to_orig_fn(pred_np))
+            uncertainty_np = output_variance[0].mean(dim=0)[p_y, p_x]
+            uncertainty_np = uncertainty_np.detach().cpu().numpy()
+            uncertainty_np = uncertainty_np.reshape((-1)).astype(np.float32)
             # assert proj_output.reshape((-1)).shape == log_var2.reshape((-1)).shape == pred_np.reshape((-1)).shape
-
-            # map to original label
-            pred_np = to_orig_fn(pred_np)
-
-           
 
             # save scan
             path = os.path.join(self.logdir, "sequences",
@@ -233,24 +228,12 @@ class User():
             pred_np.tofile(path)
 
             path = os.path.join(self.logdir, "sequences",
-                                path_seq, "log_var", path_name)
+                                path_seq, "uncertainty", path_name)
             if not os.path.exists(os.path.join(self.logdir, "sequences",
-                                               path_seq, "log_var")):
+                                               path_seq, "uncertainty")):
                 os.makedirs(os.path.join(self.logdir, "sequences",
-                                         path_seq, "log_var"))
-            log_var2.tofile(path)
-
-            proj_output = proj_output[0][p_y, p_x]
-            proj_output = proj_output.cpu().numpy()
-            proj_output = proj_output.reshape((-1)).astype(np.float32)
-
-            path = os.path.join(self.logdir, "sequences",
-                                path_seq, "uncert", path_name)
-            if not os.path.exists(os.path.join(self.logdir, "sequences",
-                                               path_seq, "uncert")):
-                os.makedirs(os.path.join(self.logdir, "sequences",
-                                         path_seq, "uncert"))
-            proj_output.tofile(path)
+                                         path_seq, "uncertainty"))
+            uncertainty_np.tofile(path)
 
             print(total_time / total_frames)
         else:
@@ -360,8 +343,6 @@ class User():
     # Everything not assigned above remains 0
 
     return mapped
-
-
 
 
 

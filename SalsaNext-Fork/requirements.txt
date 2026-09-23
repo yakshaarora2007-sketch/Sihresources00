@@ -15,3 +15,5 @@ tensorboard
 pykitti
 vispy
 pyqt6
+streamlit
+plotly

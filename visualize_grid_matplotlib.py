@@ -25,6 +25,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
 from mpl_toolkits.mplot3d import Axes3D
+from PIL import Image, ImageDraw
 
 # Add paths for fovmap
 repo_root = Path(__file__).resolve().parent
@@ -250,7 +251,7 @@ class MatplotlibGridVisualizer:
         elif mode == 1:
             colors = PALETTE_SEMANTICS_U8[cells['semantic_label'][mask]]
         else:
-            log_pts = np.log1p(cells['num_points'][mask].astype(np.float32))
+            log_pts = np.log1p(cells['point_count'][mask].astype(np.float32))
             norm_idx = np.clip((log_pts / 4.0 * 255).astype(int), 0, 255)
             colors = self.lut_vir_u8[norm_idx]
 
@@ -755,6 +756,30 @@ class MatplotlibGridVisualizer:
             time.sleep(0.001)
 
         plt.close('all')
+
+
+def render_grid_frame_api(visualizer, frame_index: int, scale: int = 2) -> np.ndarray:
+    """Return the high-speed BEV + 2.5D frame as an RGB image for web clients."""
+    if frame_index < 0 or frame_index >= visualizer.num_frames:
+        raise IndexError(f"Frame {frame_index} is outside 0..{visualizer.num_frames - 1}")
+
+    frame_data = visualizer.load_frame_data(frame_index)
+    bev = visualizer.render_bev_u8(frame_data, mode=1)
+    relief = visualizer.render_elevation_u8(frame_data)
+    panel_width = bev.shape[1] * scale
+    panel_height = bev.shape[0] * scale
+    canvas = Image.new("RGB", (panel_width * 2, panel_height + 44), (8, 12, 21))
+    draw = ImageDraw.Draw(canvas)
+    for offset, image, title in (
+        (0, bev, f"BEV SEMANTICS | FRAME {frame_index:03d}"),
+        (panel_width, relief, f"2.5D ELEVATION | FRAME {frame_index:03d}"),
+    ):
+        panel = Image.fromarray(image, mode="RGB").resize(
+            (panel_width, panel_height), Image.Resampling.NEAREST
+        )
+        canvas.paste(panel, (offset, 44))
+        draw.text((offset + 12, 14), title, fill=(232, 238, 233))
+    return np.asarray(canvas)
 
 
 def main():
