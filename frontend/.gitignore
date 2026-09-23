@@ -1,0 +1,5 @@
+node_modules
+dist
+dist-ssr
+*.local
+benchmark_results_react.json
