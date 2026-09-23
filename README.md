@@ -89,7 +89,8 @@ Tested on Sequence 08 (271 frames, ~56,000 cells per frame):
 - **Dropped Frames:** **0 frames**
 - **Cache Hit Rate:** **96.0%** via bounded 15-frame sliding window
 
-For complete before/after analysis, see [LATENCY_MIGRATION_REPORT.md](LATENCY_MIGRATION_REPORT.md).
+For complete architecture, invariants, and step-by-step developer recipes, see [ARCHITECTURE_AND_DEVELOPER_GUIDE.md](ARCHITECTURE_AND_DEVELOPER_GUIDE.md).
+For before/after benchmark comparison against the legacy system, see [LATENCY_MIGRATION_REPORT.md](LATENCY_MIGRATION_REPORT.md).
 
 ---
 
