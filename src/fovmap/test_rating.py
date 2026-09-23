@@ -1,7 +1,8 @@
 import numpy as np
 
-from .grid_engine import CELL_DTYPE
+from .grid_engine import CELL_DTYPE, pack_cell_key
 from .rating import estimate_local_ground, rate_cells
+from .rating_fast import estimate_local_ground_fast
 
 
 def make_cells(*specs):
@@ -90,3 +91,33 @@ def test_no_local_drivable_uses_finite_conservative_fallback():
     assert np.isfinite(ground[0])
     assert np.isfinite(score[0])
     assert score[0] < 100
+
+
+def test_fast_ground_matches_baseline_for_mixed_rings_and_edges():
+    cells = make_cells(
+        (-2, -2, 1.0, 1.1, 1, 1.0),
+        (-2, -1, 1.1, 1.2, 1, 1.0),
+        (-1, -2, np.nan, 1.3, 1, 1.0),
+        (0, 0, 2.0, 2.1, 1, 1.0),
+        (0, 1, 2.1, 2.2, 3, 1.0),
+        (1, 0, 2.2, 2.3, 1, 0.2),
+    )
+    cells["ring_id"] = [0, 0, 0, 2, 2, 2]
+    cells["cell_key"] = pack_cell_key(
+        cells["ring_id"], cells["row"], cells["col"]
+    )
+    baseline = estimate_local_ground(cells)
+    fast = estimate_local_ground_fast(cells)
+    np.testing.assert_array_equal(fast, baseline)
+
+
+def test_fast_rate_path_matches_baseline(monkeypatch):
+    cells = make_cells(
+        (0, 0, 0.0, 0.0, 1, 1.0),
+        (0, 1, 0.1, 0.4, 1, 1.0),
+        (1, 0, 0.0, 0.0, 2, 1.0, True),
+    )
+    baseline = rate_cells(cells)
+    monkeypatch.setenv("FOVMAP_RATING_IMPL", "fast")
+    fast = rate_cells(cells)
+    np.testing.assert_array_equal(fast, baseline)

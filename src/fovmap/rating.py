@@ -10,6 +10,7 @@ conservative, finite fallback.
 
 from __future__ import annotations
 
+import os
 import warnings
 
 import numpy as np
@@ -125,7 +126,12 @@ def rate_cells(
     if not np.isfinite(confidence_threshold) or not 0 <= confidence_threshold <= 1:
         raise ValueError("confidence_threshold must be between 0 and 1")
 
-    ground = estimate_local_ground(cells, ground_neighborhood_radius)
+    if os.environ.get("FOVMAP_RATING_IMPL", "baseline").lower() == "fast":
+        from .rating_fast import estimate_local_ground_fast
+
+        ground = estimate_local_ground_fast(cells, ground_neighborhood_radius)
+    else:
+        ground = estimate_local_ground(cells, ground_neighborhood_radius)
     obstacle_height = np.maximum(
         cells["z_max"].astype(np.float32) - ground,
         np.float32(0.0),

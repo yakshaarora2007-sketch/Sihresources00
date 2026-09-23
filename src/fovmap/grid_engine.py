@@ -58,7 +58,7 @@ def build_cell_schema(points_xy: np.ndarray, points_z: np.ndarray, ring_ids: np.
         points_xy: (N, 2) array of (x, y) in meters
         points_z: (N,) array of z in meters
         ring_ids: (N,) array of ring indices (0-3)
-        semantic_labels: (N,) optional, 4-class labels (0=DRIVABLE,1=TERRAIN,2=STATIC,3=OBJECT)
+        semantic_labels: (N,) optional, 4-class labels (0=TERRAIN,1=DRIVABLE,2=STATIC,3=OBJECT)
         confidences: (N,) optional, per-point confidence scores [0,1]
         timestamp: current scan timestamp/frame index
 

@@ -1,7 +1,0 @@
-valid set:
-Overall accuracy: 0.9566
-Mean IoU: 0.8764
-non-drivable: accuracy=0.9420, IoU=0.9217, support=18084348
-drivable: accuracy=0.9883, IoU=0.9779, support=11556399
-static obstacle: accuracy=0.9307, IoU=0.7594, support=3989885
-dynamic object: accuracy=0.9605, IoU=0.8465, support=438925
