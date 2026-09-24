@@ -146,19 +146,19 @@ export const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden select-none font-sans">
       {/* Top Navigation Bar */}
-      <header className="h-14 bg-slate-900/90 border-b border-slate-800 px-6 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
+      <header className="h-16 bg-slate-900/90 border-b border-slate-800 px-7 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <Radar size={18} />
+          <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <Radar size={20} />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+            <h1 className="text-base font-bold text-slate-100 flex items-center gap-2">
               Adaptive 2.5D LiDAR Simulation
-              <span className="text-[10px] font-mono font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-1.5 py-0.5 rounded">
+              <span className="text-[11px] font-mono font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-1.5 py-0.5 rounded">
                 REACT + CANVAS
               </span>
             </h1>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-xs text-slate-400">
               Sequence {metadata?.sequence || '08'} • Foveated Radial Grid (5cm – 50cm)
             </p>
           </div>
@@ -168,7 +168,7 @@ export const App: React.FC = () => {
         <ViewModeSelector colorMode={colorMode} onChangeColorMode={setColorMode} />
 
         {/* Right: Status Indicators */}
-        <div className="flex items-center gap-4 text-xs font-mono text-slate-400">
+        <div className="flex items-center gap-4 text-sm font-mono text-slate-400">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-slate-300 font-medium">REST + Binary Transport</span>

@@ -45,7 +45,7 @@ export const ViewModeSelector: React.FC<ViewModeSelectorProps> = ({
   onChangeColorMode,
 }) => {
   return (
-    <div className="flex bg-slate-900/80 p-1 rounded-lg border border-slate-800 backdrop-blur-md gap-1">
+    <div className="flex bg-slate-900/80 p-1.5 rounded-lg border border-slate-800 backdrop-blur-md gap-1.5">
       {MODES.map((mode) => {
         const isSelected = colorMode === mode.id;
         return (
@@ -53,7 +53,7 @@ export const ViewModeSelector: React.FC<ViewModeSelectorProps> = ({
             key={mode.id}
             onClick={() => onChangeColorMode(mode.id)}
             title={mode.desc}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-sm font-medium transition ${
               isSelected
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
@@ -64,6 +64,24 @@ export const ViewModeSelector: React.FC<ViewModeSelectorProps> = ({
           </button>
         );
       })}
+<<<<<<< Updated upstream
+=======
+      
+      <div className="w-px h-7 bg-slate-800 mx-1 self-center" />
+
+      <button
+        onClick={() => onChangeAppView('performance')}
+        title="View Performance & Analytics Dashboard"
+        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-sm font-bold transition ${
+          appView === 'performance'
+            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/50 shadow-sm'
+            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
+        }`}
+      >
+        <ActivitySquare size={14} />
+        <span>Performance</span>
+      </button>
+>>>>>>> Stashed changes
     </div>
   );
 };
