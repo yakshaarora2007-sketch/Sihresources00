@@ -25,7 +25,9 @@ import numpy as np
 
 from .grid_engine import (
     CELL_DTYPE,
+    RING_CENTER_OFFSETS,
     RING_RESOLUTIONS,
+    _group_min_max,
     assign_rings,
     compute_cell_keys,
     rebin_stored_map,
@@ -40,6 +42,7 @@ DEFAULT_LAMBDA_DECAY = 0.98
 DEFAULT_C_MIN = 0.6
 DEFAULT_N_MIN = 3
 LOGIT_EPSILON = 1e-6
+_PRUNE_RESOLUTIONS = RING_RESOLUTIONS
 
 # Auditable semantic transitions; absence is represented by no matching prior.
 # Design choice: TERRAIN <-> DRIVABLE is treated as segmentation noise and is
@@ -74,12 +77,30 @@ def _matching_indices(current_keys: np.ndarray, prior_keys: np.ndarray) -> np.nd
     return result
 
 
+def _matching_indices_sorted(current_keys: np.ndarray, prior_keys: np.ndarray) -> np.ndarray:
+    """Match keys when both arrays are already sorted and prior keys are unique."""
+    result = np.full(len(current_keys), -1, dtype=np.int64)
+    if len(prior_keys) == 0 or len(current_keys) == 0:
+        return result
+    positions = np.searchsorted(prior_keys, current_keys, side="left")
+    valid = positions < len(prior_keys)
+    safe_positions = np.minimum(positions, len(prior_keys) - 1)
+    valid &= prior_keys[safe_positions] == current_keys
+    result[valid] = positions[valid]
+    return result
+
+
+def _is_sorted_keys(keys: np.ndarray) -> bool:
+    return len(keys) < 2 or bool(np.all(keys[:-1] <= keys[1:]))
+
+
 def detect_dynamic_cells(
     current_cells: np.ndarray,
     rebinned_stored_cells: np.ndarray,
     c_min: float = DEFAULT_C_MIN,
     n_min: int = DEFAULT_N_MIN,
     material_transition_pairs: frozenset = None,
+    prior_indices: np.ndarray | None = None,
 ) -> np.ndarray:
     """Return a current-order dynamic mask without mutating either input.
 
@@ -98,10 +119,15 @@ def detect_dynamic_cells(
     if any(len(pair) != 2 for pair in pairs):
         raise ValueError("material_transition_pairs must contain 2-item pairs")
 
-    prior_indices = _matching_indices(
-        current_cells["cell_key"],
-        rebinned_stored_cells["cell_key"],
-    )
+    if prior_indices is None:
+        prior_indices = _matching_indices(
+            current_cells["cell_key"],
+            rebinned_stored_cells["cell_key"],
+        )
+    else:
+        prior_indices = np.asarray(prior_indices, dtype=np.int64)
+        if prior_indices.shape != (len(current_cells),):
+            raise ValueError("prior_indices must align with current_cells")
     matched = prior_indices >= 0
     safe_indices = np.maximum(prior_indices, 0)
     previous_labels = np.zeros(len(current_cells), dtype=np.uint8)
@@ -194,6 +220,109 @@ def carry_log_odds_through_rebin(
     return output
 
 
+def _rebin_with_log_odds(
+    stored_cells: np.ndarray,
+    T_rel: np.ndarray,
+) -> np.ndarray:
+    """Rebin once and carry log odds using the same inverse grouping.
+
+    ``grid_engine.rebin_stored_map`` already computes the exact inverse group
+    index needed to aggregate each stored row into its sorted output key.  The
+    old path discarded that index and recomputed the transform, keys, and
+    association solely to carry log odds.  This helper keeps the original
+    aggregation expressions and order, while using that one grouping for the
+    sidecar field as well.
+    """
+    if len(stored_cells) == 0 or LOG_ODDS_FIELD not in stored_cells.dtype.names:
+        return _as_fused_dtype(rebin_stored_map(stored_cells, T_rel))
+
+    ring_ids = stored_cells["ring_id"].astype(np.int32)
+    resolutions = RING_RESOLUTIONS[ring_ids]
+    centers = np.column_stack((
+        (stored_cells["col"].astype(np.float32) + RING_CENTER_OFFSETS[ring_ids]) * resolutions,
+        (stored_cells["row"].astype(np.float32) + RING_CENTER_OFFSETS[ring_ids]) * resolutions,
+        stored_cells["z_mean"],
+    ))
+    transformed = transform_points(centers, np.asarray(T_rel))
+    new_ring_ids = assign_rings(
+        np.hypot(transformed[:, 0], transformed[:, 1]).astype(np.float32)
+    )
+    new_keys, _, _ = compute_cell_keys(transformed[:, :2], new_ring_ids)
+    unique_keys, inverse_indices = np.unique(new_keys, return_inverse=True)
+
+    point_counts = np.bincount(inverse_indices, weights=stored_cells["point_count"])
+    z_sums = np.bincount(
+        inverse_indices,
+        weights=stored_cells["z_mean"] * stored_cells["point_count"],
+    )
+    z_means = z_sums / point_counts
+
+    z_mins, z_maxs = _group_min_max(
+        stored_cells["z_min"], inverse_indices, len(unique_keys),
+        values_max=stored_cells["z_max"],
+    )
+
+    label_sums = np.bincount(
+        inverse_indices,
+        weights=stored_cells["semantic_label"].astype(np.float32)
+        * stored_cells["point_count"],
+    )
+    cell_semantics = np.round(label_sums / point_counts).astype(np.uint8)
+
+    conf_sums = np.bincount(
+        inverse_indices,
+        weights=stored_cells["confidence"] * stored_cells["point_count"],
+    )
+    cell_confidences = conf_sums / point_counts
+
+    timestamps = np.bincount(
+        inverse_indices,
+        weights=stored_cells["timestamp"].astype(np.float32)
+        * stored_cells["point_count"],
+    )
+    cell_timestamps = np.round(timestamps / point_counts).astype(np.uint32)
+
+    dynamic_flags = np.bincount(
+        inverse_indices,
+        weights=stored_cells["dynamic_flag"].astype(np.float32)
+        * stored_cells["point_count"],
+    )
+    cell_dynamic = dynamic_flags / point_counts > 0.5
+
+    output = np.empty(len(unique_keys), dtype=FUSED_CELL_DTYPE)
+    output["cell_key"] = unique_keys
+    output["ring_id"] = ((unique_keys >> 48) & 0xFFFF).astype(np.uint8)
+    output["row"] = (((unique_keys >> 24) & 0xFFFFFF) - (1 << 23)).astype(np.int32)
+    output["col"] = ((unique_keys & 0xFFFFFF) - (1 << 23)).astype(np.int32)
+    output["point_count"] = point_counts.astype(np.uint32)
+    output["z_mean"] = z_means.astype(np.float32)
+    output["z_min"] = z_mins
+    output["z_max"] = z_maxs
+    output["semantic_label"] = cell_semantics
+    output["confidence"] = cell_confidences.astype(np.float32)
+    output["dynamic_flag"] = cell_dynamic
+    output["timestamp"] = cell_timestamps
+
+    source_weights = stored_cells["point_count"].astype(np.float64)
+    source_weights = np.maximum(source_weights, 1.0)
+    contributions = np.bincount(
+        inverse_indices,
+        weights=source_weights * stored_cells["log_odds"],
+        minlength=len(output),
+    )
+    weights = np.bincount(
+        inverse_indices,
+        weights=source_weights,
+        minlength=len(output),
+    )
+    output["log_odds"] = 0.0
+    supported = weights > 0
+    output["log_odds"][supported] = (
+        contributions[supported] / weights[supported]
+    ).astype(np.float32)
+    return output
+
+
 def _logit(probability: np.ndarray) -> np.ndarray:
     clipped = np.clip(probability.astype(np.float32), LOGIT_EPSILON, 1.0 - LOGIT_EPSILON)
     return np.log(clipped / (1.0 - clipped)).astype(np.float32)
@@ -211,6 +340,7 @@ def fuse_log_odds(
     dynamic_mask: np.ndarray,
     lambda_decay: float = DEFAULT_LAMBDA_DECAY,
     prune_radius_m: float = PRUNE_RADIUS_M,
+    prior_indices: np.ndarray | None = None,
 ) -> np.ndarray:
     """Fuse static evidence and return an extended array with ``log_odds``.
 
@@ -233,7 +363,13 @@ def fuse_log_odds(
     prior = _as_fused_dtype(rebinned_stored_cells)
     current = _as_fused_dtype(current_cells)
     current["dynamic_flag"] = dynamic_mask
-    prior_indices = _matching_indices(current["cell_key"], prior["cell_key"])
+    supplied_prior_indices = prior_indices is not None
+    if prior_indices is None:
+        prior_indices = _matching_indices(current["cell_key"], prior["cell_key"])
+    else:
+        prior_indices = np.asarray(prior_indices, dtype=np.int64)
+        if prior_indices.shape != (len(current),):
+            raise ValueError("prior_indices must align with current_cells")
     matched = prior_indices >= 0
     safe_indices = np.maximum(prior_indices, 0)
 
@@ -247,14 +383,21 @@ def fuse_log_odds(
     current_log_odds[static_observations & ~matched] = _measurement_log_odds(current)[static_observations & ~matched]
     current_log_odds[dynamic_mask & matched] = prior[LOG_ODDS_FIELD][safe_indices[dynamic_mask & matched]]
 
-    unmatched_prior = ~np.isin(prior["cell_key"], current["cell_key"])
+    if supplied_prior_indices:
+        matched_prior = np.zeros(len(prior), dtype=bool)
+        matched_prior[prior_indices[matched]] = True
+        unmatched_prior = ~matched_prior
+    else:
+        unmatched_prior = ~np.isin(prior["cell_key"], current["cell_key"])
     carried = prior[unmatched_prior].copy()
     carried[LOG_ODDS_FIELD] *= np.float32(lambda_decay)
-    fused = np.concatenate((current, carried))
+    fused = np.empty(len(current) + len(carried), dtype=FUSED_CELL_DTYPE)
+    fused[:len(current)] = current
+    fused[len(current):] = carried
 
     resolutions = np.choose(
         np.minimum(fused["ring_id"].astype(np.int64), 3),
-        np.array([0.05, 0.10, 0.25, 0.50], dtype=np.float32),
+        _PRUNE_RESOLUTIONS,
     )
     x_centers = (fused["col"].astype(np.float32) + 0.5) * resolutions
     y_centers = (fused["row"].astype(np.float32) + 0.5) * resolutions
@@ -291,18 +434,24 @@ def process_frame(
     if T_rel.shape != (4, 4) or not np.issubdtype(T_rel.dtype, np.number):
         raise ValueError("T_rel must be a numeric 4x4 transform")
 
-    rebinned_prior = rebin_stored_map(stored_cells, T_rel)
-    rebinned_prior = carry_log_odds_through_rebin(
-        stored_cells,
-        rebinned_prior,
-        T_rel,
-    )
+    if len(stored_cells) and LOG_ODDS_FIELD in stored_cells.dtype.names:
+        rebinned_prior = _rebin_with_log_odds(stored_cells, T_rel)
+    else:
+        rebinned_prior = _as_fused_dtype(rebin_stored_map(stored_cells, T_rel))
+
+    current_keys = current_cells["cell_key"]
+    prior_keys = rebinned_prior["cell_key"]
+    if _is_sorted_keys(current_keys) and _is_sorted_keys(prior_keys):
+        shared_prior_indices = _matching_indices_sorted(current_keys, prior_keys)
+    else:
+        shared_prior_indices = _matching_indices(current_keys, prior_keys)
 
     dynamic_mask = detect_dynamic_cells(
         current_cells,
         rebinned_prior,
         c_min=c_min,
         n_min=n_min,
+        prior_indices=shared_prior_indices,
     )
     fused_map = fuse_log_odds(
         current_cells,
@@ -310,6 +459,7 @@ def process_frame(
         dynamic_mask,
         lambda_decay=lambda_decay,
         prune_radius_m=prune_radius_m,
+        prior_indices=shared_prior_indices,
     )
     return fused_map, dynamic_mask, rebinned_prior
 

@@ -8,10 +8,12 @@ import { TelemetryHUD } from './components/TelemetryHUD';
 import { ViewModeSelector } from './components/ViewModeSelector';
 import { CellInspector } from './components/CellInspector';
 import { SidebarViewCards } from './components/SidebarViewCards';
-import { ColorMode, FrameData, HoveredCellInfo, SimulationMetadata } from './types/simulation';
+import { PerformanceDashboard } from './components/PerformanceDashboard';
+import { ColorMode, AppView, FrameData, HoveredCellInfo, SimulationMetadata } from './types/simulation';
 import { Radar, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
+  const [appView, setAppView] = useState<AppView>('canvas');
   const [metadata, setMetadata] = useState<SimulationMetadata | null>(null);
   const [currentFrame, setCurrentFrame] = useState<FrameData | null>(null);
   const [colorMode, setColorMode] = useState<ColorMode>('semantic');
@@ -165,7 +167,12 @@ export const App: React.FC = () => {
         </div>
 
         {/* Center: View Mode Switcher */}
-        <ViewModeSelector colorMode={colorMode} onChangeColorMode={setColorMode} />
+        <ViewModeSelector 
+          colorMode={colorMode} 
+          appView={appView}
+          onChangeColorMode={setColorMode} 
+          onChangeAppView={setAppView}
+        />
 
         {/* Right: Status Indicators */}
         <div className="flex items-center gap-4 text-xs font-mono text-slate-400">
@@ -180,35 +187,32 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Content Area: Left Sidebar with 5 Real-Time Mini Preview Cards + Center Main Canvas */}
-      <div className="flex flex-1 w-full h-full overflow-hidden">
-        {/* Left Rail: 5 Live Preview Cards (Task-Manager style) */}
-        <SidebarViewCards
-          currentFrame={currentFrame}
-          metadata={metadata}
-          selectedColorMode={colorMode}
-          onSelectColorMode={setColorMode}
-        />
-
-        {/* Big Center Panel: Selected View in Full Detail */}
-        <main className="relative flex-1 w-full h-full overflow-hidden bg-slate-950">
-          <LidarCanvas
-            frame={currentFrame}
+      {/* Content Area */}
+      {appView === 'canvas' ? (
+        <div className="flex flex-1 w-full h-full overflow-hidden">
+          <SidebarViewCards
+            currentFrame={currentFrame}
             metadata={metadata}
-            colorMode={colorMode}
-            onHoverCell={setHoveredCell}
-            onRenderComplete={handleRenderComplete}
+            selectedColorMode={colorMode}
+            onSelectColorMode={setColorMode}
           />
-
-          {/* Telemetry HUD (Upper Left Overlay) */}
-          <TelemetryHUD metrics={metrics} numCells={currentFrame?.numCells || 0} />
-
-          {/* Cell Inspector Bar (Lower Right Overlay above Playback) */}
-          <div className="absolute bottom-4 right-4 z-20 max-w-2xl">
-            <CellInspector info={hoveredCell} />
-          </div>
-        </main>
-      </div>
+          <main className="relative flex-1 w-full h-full overflow-hidden bg-slate-950">
+            <LidarCanvas
+              frame={currentFrame}
+              metadata={metadata}
+              colorMode={colorMode}
+              onHoverCell={setHoveredCell}
+              onRenderComplete={handleRenderComplete}
+            />
+            <TelemetryHUD metrics={metrics} numCells={currentFrame?.numCells || 0} />
+            <div className="absolute bottom-4 right-4 z-20 max-w-2xl">
+              <CellInspector info={hoveredCell} />
+            </div>
+          </main>
+        </div>
+      ) : (
+        <PerformanceDashboard />
+      )}
 
       {/* Bottom Playback Control Bar */}
       <footer className="shrink-0 z-30">

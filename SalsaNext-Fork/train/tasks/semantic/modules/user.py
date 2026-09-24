@@ -104,8 +104,8 @@ class User():
             model = SalsaNext(self.parser.get_n_classes())
         load_model_weights(model, load_checkpoint(os.path.join(modeldir, "SalsaNext")))
 
-        if self.gpu and torch.cuda.device_count() > 1:
-            model = nn.DataParallel(model)
+        # if self.gpu and torch.cuda.device_count() > 1:
+        #     model = nn.DataParallel(model)
         self.model = model.to(self.device)
         self.model_single = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
 
@@ -202,8 +202,8 @@ class User():
                 unproj_argmax = proj_argmax[p_y, p_x]
 
             # measure elapsed time
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
+            # if torch.cuda.is_available():
+            #     torch.cuda.synchronize()
             frame_time = time.time() - end
             print("Infered seq", path_seq, "scan", path_name,
                   "in", frame_time, "sec")
@@ -247,8 +247,8 @@ class User():
             # Median-filter the 4-class prediction image
             proj_argmax = self.median_filter_label_image(proj_argmax)
 
-            if torch.cuda.is_available():
-              torch.cuda.synchronize()
+            # if torch.cuda.is_available():
+            #   torch.cuda.synchronize()
             res = time.time() - end
             print("Network seq", path_seq, "scan", path_name,
                   "in", res, "sec")
@@ -267,8 +267,8 @@ class User():
                 unproj_argmax = proj_argmax[p_y, p_x]
 
             # measure elapsed time
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
+            # if torch.cuda.is_available():
+            #     torch.cuda.synchronize()
             res = time.time() - end
             print("KNN Infered seq", path_seq, "scan", path_name,
                   "in", res, "sec")
@@ -325,24 +325,13 @@ class User():
   
    # ADDING CODE FOR 4 CLASSES 
   def map_to_4_classes(self, pred):
-    mapped = np.zeros_like(pred)
-
-    # 1 = Drivable
-    mapped[(pred == 40) | (pred == 44)] = 1
-
-    # 2 = Static obstacle
-    mapped[(pred == 50) | (pred == 51) | (pred == 71) |
-           (pred == 80) | (pred == 81)] = 2
-
-    # 3 = Dynamic object
-    mapped[(pred == 10) | (pred == 11) | (pred == 15) |
-           (pred == 18) | (pred == 20) | (pred == 30) |
-           (pred == 31) | (pred == 32)] = 3
-
-    # 0 = Non-drivable
-    # Everything not assigned above remains 0
-
-    return mapped
+    if not hasattr(self, '_remap_lut'):
+      lut = np.zeros(256, dtype=pred.dtype)
+      lut[[40, 44]] = 1
+      lut[[50, 51, 71, 80, 81]] = 2
+      lut[[10, 11, 15, 18, 20, 30, 31, 32]] = 3
+      self._remap_lut = lut
+    return self._remap_lut[pred]
 
 
 

@@ -3,6 +3,7 @@ import numpy as np
 from .grid_engine import CELL_DTYPE, pack_cell_key
 from .rating import estimate_local_ground, rate_cells
 from .rating_fast import estimate_local_ground_fast
+from .rating_compiled import estimate_local_ground_compiled
 
 
 def make_cells(*specs):
@@ -121,3 +122,31 @@ def test_fast_rate_path_matches_baseline(monkeypatch):
     monkeypatch.setenv("FOVMAP_RATING_IMPL", "fast")
     fast = rate_cells(cells)
     np.testing.assert_array_equal(fast, baseline)
+
+
+def test_compiled_ground_matches_baseline(monkeypatch):
+    cells = make_cells(
+        (-2, -2, 1.0, 1.1, 1, 1.0),
+        (-2, -1, 1.1, 1.2, 1, 1.0),
+        (-1, -2, np.nan, 1.3, 1, 1.0),
+        (0, 0, 2.0, 2.1, 1, 1.0),
+        (0, 1, np.inf, 2.2, 1, 1.0),
+        (1, 0, 2.2, 2.3, 2, 0.2, True),
+    )
+    baseline = estimate_local_ground(cells)
+    baseline_ratings = rate_cells(cells)
+    compiled = estimate_local_ground_compiled(cells)
+    np.testing.assert_array_equal(compiled, baseline)
+    monkeypatch.setenv("FOVMAP_RATING_IMPL", "compiled")
+    np.testing.assert_array_equal(rate_cells(cells), baseline_ratings)
+
+
+def test_compiled_duplicate_keys_route_to_baseline():
+    cells = make_cells(
+        (0, 0, 0.0, 0.0, 1, 1.0),
+        (0, 0, 1.0, 1.0, 1, 1.0),
+    )
+    np.testing.assert_array_equal(
+        estimate_local_ground_compiled(cells),
+        estimate_local_ground(cells),
+    )

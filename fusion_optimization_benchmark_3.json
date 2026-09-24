@@ -1,0 +1,87 @@
+{
+  "scope": {
+    "frames": 271,
+    "transform": "identity float32 4x4",
+    "inputs": "D:\\Mainpro\\Sihresources00\\SalsaNext-Fork\\predictions\\uncertainty_valid\\maps\\sequences\\08",
+    "note": "Controlled Fusion benchmark; historical full-pipeline report used raw scans and poses unavailable in this checkout.",
+    "numpy": "2.5.3"
+  },
+  "open_loop": null,
+  "closed_loop": null,
+  "benchmark": {
+    "baseline": {
+      "repeats": [
+        {
+          "mean_ms": 279.6016863470586,
+          "min_ms": 28.263999993214384,
+          "p50_ms": 284.5783999946434,
+          "p95_ms": 311.9340999983251,
+          "max_ms": 380.17740001669154,
+          "total_ms": 75772.05700005288
+        },
+        {
+          "mean_ms": 348.7533258297395,
+          "min_ms": 21.685299987439066,
+          "p50_ms": 343.8024999923073,
+          "p95_ms": 465.0742500089109,
+          "max_ms": 599.6770999918226,
+          "total_ms": 94512.1512998594
+        },
+        {
+          "mean_ms": 298.25828265692144,
+          "min_ms": 21.78550002281554,
+          "p50_ms": 293.24559998349287,
+          "p95_ms": 357.0616000215523,
+          "max_ms": 437.57880001794547,
+          "total_ms": 80827.9946000257
+        }
+      ],
+      "mean_of_repeat_means_ms": 308.87109827790647,
+      "best_mean_ms": 279.6016863470586,
+      "trajectory": {
+        "min": 56795,
+        "max": 394422,
+        "mean": 363295.9483394834,
+        "last": 394422
+      },
+      "rss_after_mb": null
+    },
+    "candidate": {
+      "repeats": [
+        {
+          "mean_ms": 186.5331542435896,
+          "min_ms": 10.367300012148917,
+          "p50_ms": 191.25289999647066,
+          "p95_ms": 208.6822499986738,
+          "max_ms": 360.87859998224303,
+          "total_ms": 50550.48480001278
+        },
+        {
+          "mean_ms": 257.1986542438583,
+          "min_ms": 14.752799994312227,
+          "p50_ms": 255.21460000891238,
+          "p95_ms": 324.5420499879401,
+          "max_ms": 398.6336000089068,
+          "total_ms": 69700.8353000856
+        },
+        {
+          "mean_ms": 249.4943413288054,
+          "min_ms": 13.961899996502325,
+          "p50_ms": 251.19290000293404,
+          "p95_ms": 303.02234999544453,
+          "max_ms": 321.750900009647,
+          "total_ms": 67612.96650010627
+        }
+      ],
+      "mean_of_repeat_means_ms": 231.07538327208442,
+      "best_mean_ms": 186.5331542435896,
+      "trajectory": {
+        "min": 56795,
+        "max": 394422,
+        "mean": 363295.9483394834,
+        "last": 394422
+      },
+      "rss_after_mb": null
+    }
+  }
+}

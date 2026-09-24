@@ -4,6 +4,7 @@ from pathlib import Path
 
 RING_BOUNDARIES = np.array([10.0, 25.0, 50.0], dtype=np.float32)
 RING_RESOLUTIONS = np.array([0.05, 0.10, 0.25, 0.50], dtype=np.float32)
+RING_CENTER_OFFSETS = np.full_like(RING_RESOLUTIONS, np.float32(0.5))
 
 CELL_DTYPE = np.dtype([
     ('cell_key', np.int64),
@@ -136,6 +137,41 @@ def transform_points(points_xyz: np.ndarray, T: np.ndarray) -> np.ndarray:
     return transformed.astype(np.float32)
 
 
+def _group_min_max(
+    values_min: np.ndarray,
+    inverse_indices: np.ndarray,
+    group_count: int,
+    values_max: np.ndarray | None = None,
+):
+    """Reduce grouped values without changing the input order of any sums.
+
+    The stable grouping permutation is used only for the commutative min/max
+    reductions. All weighted sums in this module continue to use the original
+    ``np.bincount`` input order and dtype.
+    """
+    if values_max is None:
+        values_max = values_min
+    if group_count == 0:
+        return (
+            np.empty(0, dtype=np.float32),
+            np.empty(0, dtype=np.float32),
+        )
+    order = np.argsort(inverse_indices, kind="stable")
+    grouped_indices = inverse_indices[order]
+    starts = np.concatenate((
+        np.array([0], dtype=np.int64),
+        np.flatnonzero(grouped_indices[1:] != grouped_indices[:-1]).astype(np.int64) + 1,
+    ))
+    group_ids = grouped_indices[starts]
+    grouped_min = values_min[order]
+    grouped_max = values_max[order]
+    minimum = np.full(group_count, np.inf, dtype=np.float32)
+    maximum = np.full(group_count, -np.inf, dtype=np.float32)
+    minimum[group_ids] = np.minimum.reduceat(grouped_min, starts)
+    maximum[group_ids] = np.maximum.reduceat(grouped_max, starts)
+    return minimum, maximum
+
+
 def rebin_stored_map(stored_cells: np.ndarray, T_rel: np.ndarray) -> np.ndarray:
     """
     Re-bin stored map cells to current robot-centric frame (Step 8 fusion).
@@ -161,8 +197,9 @@ def rebin_stored_map(stored_cells: np.ndarray, T_rel: np.ndarray) -> np.ndarray:
     res = RING_RESOLUTIONS[ring_ids]
     OFFSET = 1 << 23
 
-    x_centers = (cols.astype(np.float32) + 0.5) * res
-    y_centers = (rows.astype(np.float32) + 0.5) * res
+    center_offsets = RING_CENTER_OFFSETS[ring_ids]
+    x_centers = (cols.astype(np.float32) + center_offsets) * res
+    y_centers = (rows.astype(np.float32) + center_offsets) * res
     z_centers = stored_cells['z_mean']
 
     centers = np.column_stack([x_centers, y_centers, z_centers])
@@ -180,10 +217,10 @@ def rebin_stored_map(stored_cells: np.ndarray, T_rel: np.ndarray) -> np.ndarray:
     z_sums = np.bincount(inverse_indices, weights=stored_cells['z_mean'] * stored_cells['point_count'])
     z_means = z_sums / point_counts
 
-    z_mins = np.full_like(unique_keys, np.inf, dtype=np.float32)
-    z_maxs = np.full_like(unique_keys, -np.inf, dtype=np.float32)
-    np.minimum.at(z_mins, inverse_indices, stored_cells['z_min'])
-    np.maximum.at(z_maxs, inverse_indices, stored_cells['z_max'])
+    z_mins, z_maxs = _group_min_max(
+        stored_cells['z_min'], inverse_indices, len(unique_keys),
+        values_max=stored_cells['z_max'],
+    )
 
     label_sums = np.bincount(inverse_indices, weights=stored_cells['semantic_label'].astype(np.float32) * stored_cells['point_count'])
     cell_semantics = np.round(label_sums / point_counts).astype(np.uint8)

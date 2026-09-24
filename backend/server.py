@@ -9,6 +9,9 @@ import os
 import struct
 from pathlib import Path
 from typing import Any
+import sys
+import time
+import threading
 
 import numpy as np
 import uvicorn
@@ -21,15 +24,13 @@ from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket
 
 ROOT = Path(__file__).resolve().parent.parent
-MAP_ROOT = (
-    ROOT
-    / "SalsaNext-Fork"
-    / "predictions"
-    / "uncertainty_valid"
-    / "maps"
-    / "sequences"
-    / "08"
-)
+
+if str(ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "src"))
+from fovmap.replay_pipeline import generate_prediction_sequence_in_memory
+
+DATASET_ROOT = ROOT / "SalsaNext-Fork" / "dataset_test"
+PREDICTION_ROOT = ROOT / "SalsaNext-Fork" / "predictions" / "uncertainty_valid"
 
 # Metadata constants
 SEQUENCE = "08"
@@ -40,40 +41,36 @@ RESOLUTIONS = [0.05, 0.10, 0.25, 0.50]
 RING_BOUNDARIES = [5.0, 12.0, 25.0, 50.0]
 EXTENT = [-50.0, 50.0, -50.0, 50.0]
 
-# Preload file list
-SNAPSHOT_FILES = sorted(MAP_ROOT.glob("*.npz"))
-TOTAL_FRAMES = len(SNAPSHOT_FILES)
+TOTAL_FRAMES = 271
+IN_MEMORY_FRAMES = []
 
-# In-memory LRU cache for recent snapshots
-_CACHE: dict[int, dict[str, Any]] = {}
-_MAX_CACHE_SIZE = 20
+def background_pipeline_worker():
+    print("Starting in-memory pipeline background thread...")
+    os.environ["FOVMAP_RATING_IMPL"] = "compiled"
+    os.environ["FOVMAP_FUSION_IMPL"] = "cuda"
+    try:
+        generator = generate_prediction_sequence_in_memory(DATASET_ROOT, PREDICTION_ROOT, sequence="08")
+        for frame_data in generator:
+            IN_MEMORY_FRAMES.append(frame_data)
+            if len(IN_MEMORY_FRAMES) % 10 == 0:
+                print(f"Processed {len(IN_MEMORY_FRAMES)} / {TOTAL_FRAMES} frames into memory...")
+        print("In-memory pipeline completed. All frames are cached in RAM.")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error in background pipeline: {e}")
 
+threading.Thread(target=background_pipeline_worker, daemon=True).start()
 
 def get_snapshot(frame_id: int) -> dict[str, Any]:
     if frame_id < 0 or frame_id >= TOTAL_FRAMES:
         raise IndexError(f"Frame {frame_id} out of bounds (0 to {TOTAL_FRAMES - 1})")
     
-    if frame_id in _CACHE:
-        return _CACHE[frame_id]
-    
-    path = SNAPSHOT_FILES[frame_id]
-    with np.load(path, allow_pickle=False) as snapshot:
-        cells = snapshot["cells"]
-        ratings = snapshot["ratings"]
-        dynamic_mask = snapshot["dynamic_mask"]
+    # Block until frame is ready in memory
+    while len(IN_MEMORY_FRAMES) <= frame_id:
+        time.sleep(0.05)
         
-        data = {
-            "cells": cells,
-            "ratings": ratings,
-            "dynamic_mask": dynamic_mask,
-        }
-    
-    if len(_CACHE) >= _MAX_CACHE_SIZE:
-        oldest_key = next(iter(_CACHE))
-        del _CACHE[oldest_key]
-        
-    _CACHE[frame_id] = data
-    return data
+    return IN_MEMORY_FRAMES[frame_id]
 
 
 async def health(request: Request) -> JSONResponse:
@@ -102,7 +99,7 @@ async def list_frames(request: Request) -> JSONResponse:
     frames_summary = [
         {
             "frame_id": i,
-            "filename": SNAPSHOT_FILES[i].name,
+            "filename": f"{i:06d}.bin",
         }
         for i in range(TOTAL_FRAMES)
     ]
@@ -131,6 +128,11 @@ async def get_frame_json(request: Request) -> JSONResponse:
         "ratings": np.round(ratings, 3).tolist(),
         "dynamic_mask": dynamic_mask.tolist(),
     })
+
+
+async def get_performance(request: Request) -> JSONResponse:
+    timings = [frame.get("timing_ms", {}) for frame in IN_MEMORY_FRAMES]
+    return JSONResponse(timings)
 
 
 async def get_frame_binary(request: Request) -> Response:
@@ -212,6 +214,7 @@ routes = [
     Route("/api/frames", list_frames, methods=["GET"]),
     Route("/api/frames/{frame_id:int}", get_frame_json, methods=["GET"]),
     Route("/api/frames/{frame_id:int}/binary", get_frame_binary, methods=["GET"]),
+    Route("/api/performance", get_performance, methods=["GET"]),
     WebSocketRoute("/ws/live", live_frame_websocket),
 ]
 

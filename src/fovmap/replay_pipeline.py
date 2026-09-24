@@ -9,11 +9,17 @@ passed to robot-centric fusion.
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 
 import numpy as np
 
-from .dynamics_fusion import process_frame
+if os.environ.get("FOVMAP_FUSION_IMPL", "baseline").lower() == "cuda":
+    from .gpu_dynamics_fusion import process_frame_cuda as process_frame
+else:
+    from .dynamics_fusion import process_frame
+
 from .grid_engine import (
     CELL_DTYPE,
     assign_rings,
@@ -162,5 +168,106 @@ def replay_prediction_sequence(
     (output_sequence / "metadata.json").write_text(json.dumps(metadata, indent=2))
     return metadata
 
+def generate_prediction_sequence_in_memory(
+    dataset_root: str | Path,
+    prediction_root: str | Path,
+    sequence: str = "08",
+    max_frames: int | None = None,
+):
+    """Generator that yields fully processed frames in memory without saving to disk."""
+    from typing import Any
+    dataset_root = Path(dataset_root)
+    prediction_root = Path(prediction_root)
+    sequence = f"{int(sequence):02d}"
+    scan_dir = dataset_root / "sequences" / sequence / "velodyne"
+    prediction_dir = prediction_root / "sequences" / sequence / "predictions"
+    uncertainty_dir = prediction_root / "sequences" / sequence / "uncertainty"
+    sequence_root = dataset_root / "sequences" / sequence
+    
+    if not scan_dir.is_dir() or not prediction_dir.is_dir():
+        raise FileNotFoundError(
+            f"Missing scan or prediction directory for sequence {sequence}"
+        )
 
-__all__ = ["replay_prediction_sequence"]
+    scan_paths = sorted(scan_dir.glob("*.bin"))
+    prediction_paths = sorted(prediction_dir.glob("*.label"))
+    if len(scan_paths) != len(prediction_paths):
+        raise ValueError(
+            f"Scan/prediction count mismatch: {len(scan_paths)} vs "
+            f"{len(prediction_paths)}"
+        )
+    poses = _read_pose_file(sequence_root / "poses.txt")
+    calibration = _read_calibration(sequence_root / "calib.txt")
+    frame_count = len(scan_paths) if max_frames is None else min(max_frames, len(scan_paths))
+
+    stored_cells = np.empty(0, dtype=CELL_DTYPE)
+    for index in range(frame_count):
+        t0 = time.perf_counter()
+        scan = load_semantickitti_scan(str(scan_paths[index]))
+        labels = np.fromfile(prediction_paths[index], dtype=np.int32)
+        if len(labels) != len(scan):
+            raise ValueError(
+                f"Point/prediction mismatch at frame {index}: "
+                f"{len(scan)} vs {len(labels)}"
+            )
+        uncertainty_path = uncertainty_dir / prediction_paths[index].name
+        if uncertainty_path.is_file():
+            uncertainty = np.fromfile(uncertainty_path, dtype=np.float32)
+            if len(uncertainty) != len(scan):
+                raise ValueError(
+                    f"Point/uncertainty count mismatch at frame {index}: "
+                    f"{len(scan)} vs {len(uncertainty)}"
+                )
+            confidence = np.clip(
+                1.0 / (1.0 + np.maximum(uncertainty, 0.0)),
+                0.05,
+                1.0,
+            ).astype(np.float32)
+        else:
+            uncertainty = np.zeros(len(scan), dtype=np.float32)
+            confidence = np.ones(len(scan), dtype=np.float32)
+        ranges = np.hypot(scan[:, 0], scan[:, 1]).astype(np.float32)
+        t1 = time.perf_counter()
+        
+        cells = build_cell_schema(
+            scan[:, :2],
+            scan[:, 2],
+            assign_rings(ranges),
+            semantic_labels=labels.astype(np.uint8),
+            confidences=confidence,
+            timestamp=index,
+        )
+        t2 = time.perf_counter()
+        
+        fused_cells, dynamic_mask, rebinned_prior = process_frame(
+            cells,
+            stored_cells,
+            _relative_velodyne_pose(poses, calibration, index),
+        )
+        t3 = time.perf_counter()
+        
+        ratings = rate_cells(cells)
+        t4 = time.perf_counter()
+        
+        # Instead of np.savez_compressed, yield the objects
+        yield {
+            "frame_id": index,
+            "filename": scan_paths[index].name,
+            "cells": cells,
+            "ratings": ratings,
+            "dynamic_mask": dynamic_mask,
+            "rebinned_prior": rebinned_prior,
+            "fused_cells": fused_cells,
+            "point_uncertainty": uncertainty,
+            "timing_ms": {
+                "io_and_prep": (t1 - t0) * 1000.0,
+                "grid_build": (t2 - t1) * 1000.0,
+                "fusion": (t3 - t2) * 1000.0,
+                "rating": (t4 - t3) * 1000.0,
+                "total": (t4 - t0) * 1000.0,
+            }
+        }
+        stored_cells = fused_cells
+
+
+__all__ = ["replay_prediction_sequence", "generate_prediction_sequence_in_memory"]

@@ -126,7 +126,12 @@ def rate_cells(
     if not np.isfinite(confidence_threshold) or not 0 <= confidence_threshold <= 1:
         raise ValueError("confidence_threshold must be between 0 and 1")
 
-    if os.environ.get("FOVMAP_RATING_IMPL", "baseline").lower() == "fast":
+    implementation = os.environ.get("FOVMAP_RATING_IMPL", "baseline").lower()
+    if implementation == "compiled":
+        from .rating_compiled import estimate_local_ground_compiled
+
+        ground = estimate_local_ground_compiled(cells, ground_neighborhood_radius)
+    elif implementation == "fast":
         from .rating_fast import estimate_local_ground_fast
 
         ground = estimate_local_ground_fast(cells, ground_neighborhood_radius)

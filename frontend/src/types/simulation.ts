@@ -1,6 +1,15 @@
 export type SemanticClassName = 'TERRAIN' | 'DRIVABLE' | 'STATIC' | 'OBJECT';
 
 export type ColorMode = 'semantic' | 'elevation' | 'rating' | 'resolution' | 'dynamic';
+export type AppView = 'canvas' | 'performance';
+
+export interface PipelineTiming {
+  io_and_prep: number;
+  grid_build: number;
+  fusion: number;
+  rating: number;
+  total: number;
+}
 
 export interface SimulationMetadata {
   sequence: string;

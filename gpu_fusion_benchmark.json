@@ -1,0 +1,107 @@
+{
+  "environment": {
+    "python": "3.14.6 (tags/v3.14.6:c63aec6, Jun 10 2026, 10:26:10) [MSC v.1944 64 bit (AMD64)]",
+    "torch": "2.14.0+cu130",
+    "cuda_build": "13.0",
+    "device": "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "numpy": "2.5.3",
+    "frames": 271,
+    "repeats": 3
+  },
+  "regimes": {
+    "identity": {
+      "correctness": {
+        "fused_cells": {
+          "dtype_equal": true,
+          "shape_equal": true,
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs_float_delta": 0.0
+        },
+        "dynamic_mask": {
+          "dtype_equal": true,
+          "shape_equal": true,
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs_float_delta": 0.0
+        },
+        "rebinned_prior": {
+          "dtype_equal": true,
+          "shape_equal": true,
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs_float_delta": 0.0
+        }
+      },
+      "cpu": {
+        "mean_ms": 248.1094787211895,
+        "p50_ms": 238.92780003370717,
+        "p95_ms": 341.62142000859603,
+        "max_ms": 527.5905000162311,
+        "repeat_mean_sigma_ms": 16.984841418303684
+      },
+      "gpu": {
+        "mean_ms": 97.42206248522336,
+        "p50_ms": 89.1078999848105,
+        "p95_ms": 151.39281997689974,
+        "max_ms": 516.5375999640673,
+        "repeat_mean_sigma_ms": 9.556308228158937
+      },
+      "paired_cpu_minus_gpu": {
+        "mean_ms": 150.68741623596614,
+        "positive_fraction": 0.997539975399754
+      },
+      "stored_cells_last": {
+        "cpu": 394422,
+        "gpu": 394422
+      }
+    },
+    "nonidentity": {
+      "correctness": {
+        "fused_cells": {
+          "dtype_equal": true,
+          "shape_equal": true,
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs_float_delta": 0.0
+        },
+        "dynamic_mask": {
+          "dtype_equal": true,
+          "shape_equal": true,
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs_float_delta": 0.0
+        },
+        "rebinned_prior": {
+          "dtype_equal": true,
+          "shape_equal": true,
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs_float_delta": 0.0
+        }
+      },
+      "cpu": {
+        "mean_ms": 218.52025153783526,
+        "p50_ms": 218.48099998896942,
+        "p95_ms": 269.6182600222528,
+        "max_ms": 330.1209000055678,
+        "repeat_mean_sigma_ms": 12.042429901293039
+      },
+      "gpu": {
+        "mean_ms": 86.88363862303538,
+        "p50_ms": 83.80510000279173,
+        "p95_ms": 119.17488002218305,
+        "max_ms": 198.49099998828024,
+        "repeat_mean_sigma_ms": 4.097969188952529
+      },
+      "paired_cpu_minus_gpu": {
+        "mean_ms": 131.63661291479988,
+        "positive_fraction": 1.0
+      },
+      "stored_cells_last": {
+        "cpu": 390000,
+        "gpu": 390000
+      }
+    }
+  }
+}

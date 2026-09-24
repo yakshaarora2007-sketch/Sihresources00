@@ -1,10 +1,12 @@
 import React from 'react';
-import { ColorMode } from '../types/simulation';
-import { Layers, Mountain, ShieldAlert, CircleDot, Zap } from 'lucide-react';
+import { ColorMode, AppView } from '../types/simulation';
+import { Layers, Mountain, ShieldAlert, CircleDot, Zap, ActivitySquare } from 'lucide-react';
 
 interface ViewModeSelectorProps {
   colorMode: ColorMode;
+  appView: AppView;
   onChangeColorMode: (mode: ColorMode) => void;
+  onChangeAppView: (view: AppView) => void;
 }
 
 const MODES: { id: ColorMode; label: string; icon: React.ReactNode; desc: string }[] = [
@@ -42,16 +44,21 @@ const MODES: { id: ColorMode; label: string; icon: React.ReactNode; desc: string
 
 export const ViewModeSelector: React.FC<ViewModeSelectorProps> = ({
   colorMode,
+  appView,
   onChangeColorMode,
+  onChangeAppView,
 }) => {
   return (
     <div className="flex bg-slate-900/80 p-1 rounded-lg border border-slate-800 backdrop-blur-md gap-1">
       {MODES.map((mode) => {
-        const isSelected = colorMode === mode.id;
+        const isSelected = appView === 'canvas' && colorMode === mode.id;
         return (
           <button
             key={mode.id}
-            onClick={() => onChangeColorMode(mode.id)}
+            onClick={() => {
+              onChangeAppView('canvas');
+              onChangeColorMode(mode.id);
+            }}
             title={mode.desc}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
               isSelected
@@ -64,6 +71,21 @@ export const ViewModeSelector: React.FC<ViewModeSelectorProps> = ({
           </button>
         );
       })}
+      
+      <div className="w-px h-6 bg-slate-800 mx-1 self-center" />
+
+      <button
+        onClick={() => onChangeAppView('performance')}
+        title="View Performance & Analytics Dashboard"
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition ${
+          appView === 'performance'
+            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/50 shadow-sm'
+            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
+        }`}
+      >
+        <ActivitySquare size={14} />
+        <span>Performance</span>
+      </button>
     </div>
   );
 };
